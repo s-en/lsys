@@ -9,6 +9,11 @@
          [() '()]
          [(x . xs) `(,(walk func x) . ,(walk func xs))]
          [x (func x)] ))
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
 
 (define-class <circular-value> ()
     ((values :init-form (iota 7 0 0) :init-keyword :values :accessor values-of)))
@@ -29,6 +34,14 @@
           :values (map * (~ c1 'values) (circular-list num))))
 (define-method average ((c1 <circular-value>))
     (/ (fold + 0 (~ c1 'values)) (length (~ c1 'values))))
+(define-method normalize! ((c1 <circular-value>))
+    (set! (~ c1 'values) 
+          (accumulate 
+            (^(a b) (if (null? b)
+                        (cons (/ (+ a (car (~ c1 'values))) 2) b)
+                        (cons (/ (+ a (car b)) 2) b)))
+            '()
+            (~ c1 'values))))
 
 (define-class <signal> ()
    ((fuel  :init-form (make <circular-value>) :init-keyword :fuel  :accessor fuel-of)
@@ -63,6 +76,10 @@
                   (set! (~ s1 sname) (* (~ s1 sname) 1/2))
                   (set! (~ s2 sname) (~ s1 sname))))
     (list s1 s2)))
+(define-method normalize! ((s1 <signal>))
+  (dolist [slot (class-slots <signal>)]
+          (let1 sname (slot-definition-name slot)
+                (normalize! (~ s1 sname)))))
 
 
 
@@ -109,13 +126,18 @@
 
 
 (define (grow! tree)
+  (define (propagate! cell signal)
+    (transfer! (signal-of cell) signal 0.2)
+    (normalize! (signal-of cell)))
   (define (each1 signal t)
     (if (null? t) '()
         (let* ((separate-signal (divide2 signal))
                (s1 (car separate-signal))
                (s2 (cadr separate-signal))
                (head-tree (if (is-a? (car t) <cell>)
-                              ((~ tree 'rules) (car t) s1)
+                              (begin
+                                (propagate! (car t) s1)
+                                ((~ tree 'rules) (car t) s1))
                               (each1 s1 (car t))))
                (tail-tree (each1 s2 (cdr t))))
           (add! s1 s2)
@@ -128,7 +150,6 @@
 
 (define my-rules (^(cell signal)
   (let1 cs (signal-of cell)
-        (transfer! cs signal 0.2)
         (match (type-of cell)
                ['R cell]
                ['I (if (> (average (fuel-of cs)) 40)
