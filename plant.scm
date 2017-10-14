@@ -1,4 +1,6 @@
+(use srfi-1)
 (use util.match)
+(use math.const)
 
 (define (atom? x) (not (pair? x)))
 
@@ -8,12 +10,31 @@
          [(x . xs) `(,(walk func x) . ,(walk func xs))]
          [x (func x)] ))
 
+(define-class <circular-value> ()
+    ((values :init-form (iota 7 0 0) :init-keyword :values :accessor values-of)))
+(define (make-circular-value val) 
+  (make <circular-value> :values (iota 7 val 0)))
+(define-method + ((c1 <circular-value>) (c2 <circular-value>))
+    (make <circular-value> 
+          :values (map + (~ c1 'values) (~ c2 values))))
+(define-method + ((c1 <circular-value>) (num <number>))
+    (make <circular-value> 
+          :values (map + (~ c1 'values) (circular-list num))))
+(define-method add! ((c1 <circular-value>) (num <number>))
+    (set! (~ c1 'values) (map + (~ c1 'values) (circular-list num))))
+(define-method inc! ((c1 <circular-value>) (c2 <circular-value>))
+    (set! (~ c1 'values) (map + (~ c1 'values) (~ c2 'values))))
+(define-method * ((c1 <circular-value>) (num <number>))
+    (make <circular-value> 
+          :values (map * (~ c1 'values) (circular-list num))))
+(define-method average ((c1 <circular-value>))
+    (/ (fold + 0 (~ c1 'values)) (length (~ c1 'values))))
 
 (define-class <signal> ()
-   ((fuel  :init-value 0 :init-keyword :fuel  :accessor fuel-of)
-    (sugar :init-value 0 :init-keyword :sugar :accessor sugar-of)
-    (auxin :init-value 0 :init-keyword :auxin :accessor auxin-of)
-    (cyto  :init-value 0 :init-keyword :cyto  :accessor cyto-of)))
+   ((fuel  :init-form (make <circular-value>) :init-keyword :fuel  :accessor fuel-of)
+    (sugar :init-form (make <circular-value>) :init-keyword :sugar :accessor sugar-of)
+    (auxin :init-form (make <circular-value>) :init-keyword :auxin :accessor auxin-of)
+    (cyto  :init-form (make <circular-value>) :init-keyword :cyto  :accessor cyto-of)))
 
 (define-method add! ((s1 <signal>) (s2 <signal>))
   (dolist [slot (class-slots <signal>)]
@@ -39,7 +60,7 @@
   (let1 s2 (make <signal>)
     (dolist [slot (class-slots <signal>)]
             (let1 sname (slot-definition-name slot)
-                  (set! (~ s1 sname) (/ (~ s1 sname) 2))
+                  (set! (~ s1 sname) (* (~ s1 sname) 1/2))
                   (set! (~ s2 sname) (~ s1 sname))))
     (list s1 s2)))
 
@@ -47,17 +68,15 @@
 
 (define-class <cell> ()
     ((type   :init-value 'I :init-keyword :type   :accessor type-of)
-     (stock  :init-value 0  :init-keyword :stock  :accessor stock-of)
-     (signal :init-value '()  :init-keyword :signal :accessor signal-of)))
-(define-method initialize ((self <cell>) initargs)
-    (next-method)
-    (set! (~ self 'signal) (make <signal>)))
+     (stock  :init-form (make <circular-value>)  :init-keyword :stock  :accessor stock-of)
+     (len    :init-value 0 :init-keyword :len :accessor len-of)
+     (angle  :init-value 0 :init-keyword :angle :accessor angle-of)
+     (signal :init-form (make <signal>)  :init-keyword :signal :accessor signal-of)))
 
 (define-class <tree> ()
     ((data :init-value '() :init-keyword :data :accessor data-of)
-     (rsignal :init-value (make <signal>) :init-keyword :rsignal :accessor rsignal-of)
-     (rules :init-value '() :init-keyword :rules :accessor rules-of)
-     ))
+     (rsignal :init-form (make <signal>) :init-keyword :rsignal :accessor rsignal-of)
+     (rules :init-value '() :init-keyword :rules :accessor rules-of)))
 
 (define (make-tree tree-expr)
     (define (each1 t)
@@ -71,8 +90,9 @@
     (set! (~ self 'data) (make-tree (~ self 'data))))
 
 
-
-
+(define-method write-object ((cv <circular-value>) port)
+  (format port "~a"
+          (average cv)))
 (define-method write-object ((s <signal>) port)
   (format port "s:~a:~a"
           (~ s 'fuel)
@@ -83,7 +103,8 @@
           (~ c 'stock)
           (~ c 'signal)))
 (define-method write-object ((tree <tree>) port)
-  (format port "~a"
+  (format port "~a ~a"
+          (~ tree 'rsignal)
           (~ tree 'data)))
 
 
@@ -107,24 +128,24 @@
 
 (define my-rules (^(cell signal)
   (let1 cs (signal-of cell)
-        (transfer! cs signal 1/7)
+        (transfer! cs signal 0.2)
         (match (type-of cell)
                ['R cell]
-               ['I (if (> (fuel-of cs) 5)
+               ['I (if (> (average (fuel-of cs)) 40)
                        (begin 
-                         (dec! (fuel-of cs) 5)
+                         (add! (fuel-of cs) -40)
                          (list cell (make <cell> :type 'I)))
                        cell)]
                [_ cell]))))
 
 (define test-tree (make <tree> 
         :data '(R I (I L) I A)
-        :rsignal (make <signal> :fuel 100)
+        :rsignal (make <signal> :fuel (make-circular-value 100))
         :rules my-rules))
 
 (define test-tree (make <tree> 
         :data '(I)
-        :rsignal (make <signal> :fuel 100)
+        :rsignal (make <signal> :fuel (make-circular-value 120))
         :rules my-rules))
 
 
