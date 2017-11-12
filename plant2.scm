@@ -3,6 +3,7 @@
 (define (atom? x) (and (not (pair? x)) (not (null? x))))
 
 (define (cval val) (iota 7 val 0))
+(define (average cv) (/ (fold + 0 cv) (length cv)))
 
 (define (cell type stock len angle)
   `(cell ,type ,stock ,len ,angle))
@@ -14,6 +15,9 @@
 (define (stock cell) (~ cell 2))
 (define (len cell)   (~ cell 3))
 (define (angle cell) (~ cell 4))
+(define (roll cell)  (~ (angle cell) 1))
+(define (pitch cell) (~ (angle cell) 2))
+(define (yaw cell)   (~ (angle cell) 3))
 (define (type-eq? cell ty) (eq? (type cell) ty))
 (define (apex? lst)  (and (cell? lst) (type-eq? lst 'A)))
 (define (inter? lst) (and (cell? lst) (type-eq? lst 'I)))
@@ -31,8 +35,10 @@
     (define (half cv) (map (^(v) (* v 0.5)) cv))
     (signal (half (fuel sig)) (half (auxin sig)) (half (cyto sig))))
   (define (combine-signal s1 s2)
-    (define (add x y) (map (^(a b) (+ a b)) x y))
-    (signal (add (fuel s1) (fuel s1)) (add (auxin s1) (auxin s1)) (add (cyto s1) (cyto s1))))
+    (define (add x y) (map + x y))
+    (signal (add (fuel s1) (fuel s2))
+            (map (^(x y) (min (+ x y) 1)) (auxin s1) (auxin s2))
+            (add (cyto s1) (cyto s2))))
   (define (walk tree sig)
     (match tree
       [() (cons '() sig)]
@@ -42,11 +48,11 @@
               (combsig (combine-signal halfsig (cdr tail)))
               (down (func x combsig))
               (new-cell (car down))
-              (new-sig  (cdr down)))
+              (new-sig  #?=(cdr down)))
          (cons (if (or (cell? new-cell) (atom? new-cell))
                    (cons new-cell (car tail))
                    (append new-cell (car tail)))
-               combsig))]
+               new-sig))]
       [(x . y)
        (let* ((halfsig (split-signal sig))
               (head (walk x halfsig))
@@ -55,10 +61,19 @@
          (cons (cons (car head) (car tail)) combsig))]))
   (walk tree sig))
 
-(define (uprules s)
-  s)
+
 (define (myrules c s)
-  (cons c s))
+  (let* ((s1 
+           (match c
+                  [(? apex? x) (signal (fuel s) (cval 1.0) (cyto s))]
+                  [_ (signal (fuel s) (auxin s) (cyto s))]))
+         (burn (map * (fuel s1) (auxin s1)))
+         (_auxin (map * (auxin s1) (cval 0.9)))
+         (_stock (map + (stock c) (map * burn (map - (cval 1) (auxin s1)))))
+         (_len (+ (len c) (average (map * burn (auxin s1)))))
+         (new-sig (signal (map - (fuel s1) burn) _auxin (cyto s1)))
+         (new-cell (cell (type c) _stock _len (angle c))))
+    (cons new-cell new-sig)))
 
 
 (define (print-tree tree)
@@ -73,8 +88,7 @@
 (grow myrules ttree (signal (cval 10) (cval 0) (cval 0.5)))
 
 
-
-
+(debug-print-width #f)
 
 
 
