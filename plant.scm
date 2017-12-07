@@ -1,6 +1,10 @@
 (load "lib/match.so")
 
 (define (atom? x) (and (not (pair? x)) (not (null? x))))
+(define (fold func val ls)
+  (if (null? ls)
+      val
+      (fold func (func (car ls) val) (cdr ls))))
 
 (define (cval val) (make-list 7 val))
 (define (average cv) (/ (fold + 0 cv) (length cv)))
@@ -11,13 +15,13 @@
   (cell type (cval 0) 0 (cval 0)))
 
 (define (cell? lst) (and (pair? lst) (eq? (car lst) 'cell)))
-(define (type cell)  (~ cell 1))
-(define (stock cell) (~ cell 2))
-(define (len cell)   (~ cell 3))
-(define (angle cell) (~ cell 4))
-(define (roll cell)  (~ (angle cell) 1))
-(define (pitch cell) (~ (angle cell) 2))
-(define (yaw cell)   (~ (angle cell) 3))
+(define (type cell)  (list-ref cell 1))
+(define (stock cell) (list-ref cell 2))
+(define (len cell)   (list-ref cell 3))
+(define (angle cell) (list-ref cell 4))
+(define (roll cell)  (list-ref (angle cell) 1))
+(define (pitch cell) (list-ref (angle cell) 2))
+(define (yaw cell)   (list-ref (angle cell) 3))
 (define (type-eq? cell ty) (eq? (type cell) ty))
 (define (apex? lst)  (and (cell? lst) (type-eq? lst 'A)))
 (define (inter? lst) (and (cell? lst) (type-eq? lst 'I)))
@@ -26,18 +30,18 @@
 (define (signal fuel auxin cyto)
   `(signal ,fuel ,auxin ,cyto))
 (define (signal? lst) (and (pair? lst) (eq? (car lst) 'signal)))
-(define (fuel s)  (~ s 1))
-(define (auxin s) (~ s 2))
-(define (cyto s)  (~ s 3))
+(define (fuel s)  (list-ref s 1))
+(define (auxin s) (list-ref s 2))
+(define (cyto s)  (list-ref s 3))
 
 (define (grow func tree sig)
   (define (split-signal sig)
-    (define (half cv) (map (^(v) (* v 0.5)) cv))
+    (define (half cv) (map (lambda (v) (* v 0.5)) cv))
     (signal (half (fuel sig)) (half (auxin sig)) (half (cyto sig))))
   (define (combine-signal s1 s2)
     (define (add x y) (map + x y))
     (signal (add (fuel s1) (fuel s2))
-            (map (^(x y) (min (+ x y) 1)) (auxin s1) (auxin s2))
+            (map (lambda (x y) (min (+ x y) 1)) (auxin s1) (auxin s2))
             (add (cyto s1) (cyto s2))))
   (define (walk tree sig)
     (match tree
@@ -77,7 +81,7 @@
 
 
 (define (print-tree tree)
-  (walk (^(c) (type c)) tree))
+  (walk (lambda (c) (type c)) tree))
 
 (define acell (make-cell 'A))
 
